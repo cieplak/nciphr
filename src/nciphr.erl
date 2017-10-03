@@ -4,7 +4,8 @@
 
 -export([encrypt/2, decrypt/2,
     decode_ssh_rsa_pub/1, decode_pem/1,
-    to_json/1, serialize/1]).
+    to_json/1, serialize/1,
+    download_github_keys/1]).
 
 main(Args) ->
     Command = lists:nth(1, Args),
@@ -38,7 +39,6 @@ main(Args) ->
 encrypt(Plaintext, PublicKey) ->
     SymmetricKey = crypto:strong_rand_bytes(32),
     IV           = crypto:strong_rand_bytes(16),
-    Padding      = byte_size(Plaintext),
     Ciphertext   = crypto:block_encrypt(aes_cbc256, SymmetricKey, IV, pad(Plaintext, 32)),
     SealedKey    = public_key:encrypt_public(SymmetricKey, PublicKey),
     SealedIV     = public_key:encrypt_public(IV          , PublicKey),
