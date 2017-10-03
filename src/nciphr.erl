@@ -48,7 +48,7 @@ decrypt({SealedKey, SealedIV, Ciphertext}, PrivateKey) ->
     SymmetricKey = public_key:decrypt_private(SealedKey, PrivateKey),
     IV           = public_key:decrypt_private(SealedIV,  PrivateKey),
     Plaintext    = crypto:block_decrypt(aes_cbc256, SymmetricKey, IV, Ciphertext),
-    Plaintext.
+    unpad(Plaintext).
 
 pad(Value, BlockSize) when is_integer(Value) ->
     pad(erlang:integer_to_binary(Value), BlockSize);
@@ -56,9 +56,24 @@ pad(Value, BlockSize) when is_integer(Value) ->
 pad(Value, BlockSize) ->
     DataSize = byte_size(Value),
     BufferSize = trunc(DataSize/BlockSize) * BlockSize + BlockSize,
-    PaddingLength = BufferSize - DataSize,
-    Padding = binary:list_to_bin(lists:duplicate(PaddingLength, <<"*">>)),
-    binary:list_to_bin([Value, Padding]).
+    PaddingLength = case BufferSize - DataSize of
+                        0 -> BlockSize;
+                        X -> X
+                    end,
+    Padding = case PaddingLength of
+                  1 -> <<0>>;
+                  N ->
+                      Chaffsize = binary:encode_unsigned(N - 1),
+                      Chaff = binary:list_to_bin(lists:duplicate(N - 1, <<"*">>)),
+                      <<Chaffsize/binary, Chaff/binary>>
+              end,
+    binary:list_to_bin([Padding, Value]).
+
+unpad(Bytes) ->
+    Size      = byte_size(Bytes),
+    Chaffsize = binary:first(Bytes),
+    Plaintext = binary:part(Bytes, {Chaffsize + 1, Size - Chaffsize - 2}), %% remove extra EOF
+    Plaintext.
 
 to_json({SealedKey, Ciphertext}) ->
     [<<"{">>,
