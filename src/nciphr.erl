@@ -12,13 +12,26 @@ main(Args) ->
     case Command of
         "encrypt" ->
             ["encrypt", PathToSshRsaPublicKey, PathToMsg] = Args,
+            Plaintext = case PathToMsg of
+                            "-"  ->
+                                read_stdin([]);
+                            _    ->
+                                {ok, Data} = file:read_file(PathToMsg),
+                                Data
+                        end,
             [{RsaPublicKey, _Attrs}] = decode_ssh_rsa_pub({file, PathToSshRsaPublicKey}),
-            {ok, Plaintext} = file:read_file(PathToMsg),
             Encrypted       = encrypt(Plaintext, RsaPublicKey),
             Msg             = serialize(Encrypted),
             io:format("~s~n", [Msg]);
         "decrypt" ->
             ["decrypt", PathToPrivateKey, PathToMsg] = Args,
+            Msg = case PathToMsg of
+                      "-"  -> read_stdin([]);
+                      _    ->
+                          io:format("~s", [PathToMsg]),
+                          {ok, Data} = file:read_file(PathToMsg),
+                          Data
+                  end,
             [Decoded] = decode_pem({file, PathToPrivateKey}),
             PrivateKey = case Decoded of
                              {_, _, not_encrypted} ->
@@ -29,12 +42,19 @@ main(Args) ->
                                  {ok, [Passphrase]} = io:fread(Prompt, "~s"),
                                  public_key:pem_entry_decode(Decoded, Passphrase)
                          end,
-            {ok, Msg} = file:read_file(PathToMsg),
             {Sealedkey, SealedIV,  Ciphertext} = deserialize(Msg),
             Plaintext = decrypt({Sealedkey, SealedIV, Ciphertext}, PrivateKey),
             io:format("~s~n", [Plaintext])
     end,
     erlang:halt(0).
+
+read_stdin(L) ->
+    case io:fread("", "~s") of
+        eof ->
+            binary:list_to_bin(L);
+        {ok, [Line]} ->
+            read_stdin(L ++ Line)
+    end.
 
 encrypt(Plaintext, PublicKey) ->
     SymmetricKey = crypto:strong_rand_bytes(32),
@@ -72,7 +92,7 @@ pad(Value, BlockSize) ->
 unpad(Bytes) ->
     Size      = byte_size(Bytes),
     Chaffsize = binary:first(Bytes),
-    Plaintext = binary:part(Bytes, {Chaffsize + 1, Size - Chaffsize - 2}), %% remove extra EOF
+    Plaintext = binary:part(Bytes, {Chaffsize + 1, Size - Chaffsize - 1}), %% remove extra EOF
     Plaintext.
 
 to_json({SealedKey, Ciphertext}) ->
@@ -82,13 +102,13 @@ to_json({SealedKey, Ciphertext}) ->
         <<"}">>].
 
 serialize({SealedKey, SealedIV, Ciphertext}) ->
-    [base64:encode(SealedKey), <<"*">>,
-     base64:encode(SealedIV),  <<"*">>,
+    [base64:encode(SealedKey), <<".">>,
+     base64:encode(SealedIV),  <<".">>,
      base64:encode(Ciphertext)].
 
 deserialize(Binary) ->
-    [A, T] = binary:split(Binary, <<"*">>),
-    [B, C] = binary:split(T,      <<"*">>),
+    [A, T] = binary:split(Binary, <<".">>),
+    [B, C] = binary:split(T,      <<".">>),
     {SealedKey, SealedIV, Ciphertext} = {base64:decode(A), base64:decode(B), base64:decode(C)},
     {SealedKey, SealedIV, Ciphertext}.
 

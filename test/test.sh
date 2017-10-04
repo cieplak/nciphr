@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -e
+set -x
 
-./_build/default/bin/nciphr encrypt test/keys/rsa_key.pub test/plaintext/erlang07-wiger.pdf > test/encrypted.pdf
-./_build/default/bin/nciphr decrypt test/keys/rsa_key test/encrypted.pdf > test/decrypted.pdf
+alias nciphr="./_build/default/bin/nciphr"
 
-./_build/default/bin/nciphr encrypt test/keys/rsa_key.pub test/plaintext/msg.txt > test/encrypted.txt
-./_build/default/bin/nciphr decrypt test/keys/rsa_key test/encrypted.txt > test/decrypted.txt
+cat test/plaintext/msg.txt            | nciphr encrypt test/keys/rsa_key.pub - | nciphr decrypt test/keys/rsa_key - > test/decrypted.txt
+cat test/plaintext/erlang07-wiger.pdf | nciphr encrypt test/keys/rsa_key.pub - | nciphr decrypt test/keys/rsa_key - > test/decrypted.pdf
 
 md5sum test/plaintext/erlang07-wiger.pdf
 md5sum test/decrypted.pdf
